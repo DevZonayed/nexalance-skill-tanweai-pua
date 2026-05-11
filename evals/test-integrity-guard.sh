@@ -121,6 +121,22 @@ assert_decision "secret env bash read asks approval" "$OUT" "ask" "Capability-ab
 OUT=$(run_guard force Bash '{"command":"curl https://example.com/benchmark-answer"}')
 assert_decision "benchmark answer curl asks approval" "$OUT" "ask" "Solution contamination risk"
 
+# Regression: shell built-ins / bare identifiers must not be treated as path candidates.
+# The shell `eval` keyword previously matched the (^|/)(evals?)(/|$) directory regex
+# because it appeared as a bare token, even though it referenced no filesystem path.
+OUT=$(run_guard force Bash '{"command":"eval rg -n pattern . 2>/dev/null"}')
+assert_empty "shell eval keyword is not a path candidate" "$OUT"
+
+OUT=$(run_guard force Bash '{"command":"test -f config.yaml && echo ok"}')
+assert_empty "shell test builtin is not a path candidate" "$OUT"
+
+OUT=$(run_guard force Bash '{"command":"spec --version"}')
+assert_empty "bare spec identifier is not a path candidate" "$OUT"
+
+# Positive control: an actual evals/ directory path must still be protected.
+OUT=$(run_guard force Bash '{"command":"sed -i \"\" \"s/x/y/\" evals/runner.sh"}')
+assert_decision "mutating bash on evals directory still asks approval" "$OUT" "ask" "Grader gaming risk"
+
 echo "==========================================="
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
